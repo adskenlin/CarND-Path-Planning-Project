@@ -143,3 +143,14 @@ still be compilable with cmake and make./
 ## How to write a README
 A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
 
+# Reflection
+## Project Result
+1. The code can be correctly compiled. 
+2. The Car is able to drive at least 4.32 miles without incidient. As the image shown below, the car can drive more than 7.30 Miles without incident.(driving under speed limit, max acceleration and jerk, no collisions, staying in lane, excuting lane change when necessary)
+![miles-prove](images/miles-prove.png)
+
+## Model Documentation
+The Code consists of three parts:
+1. The first part of code establishs a prediction model, which can help clarify the status of omvs(other cars). According to the sensor fusion data, the information of omvs would in this situation translated into the driving lane, the predicted s-distance to ego-car(s comes from Frenet). With these codes the car could get information clearly wether there are OMVs ahead, leftside or right side. 
+2. The second part of code helps the car make decision and excute lane change. With the information received from first part of code, the ego-car could make the decision, if it is possible or necessary to take a lane change. e.g. if an OMV drives in the same lane and with lower speed(the car keeps apporaching the OMV within 30 meters), then it's necessary to take a lane change. But only if there are no OMVs in nearest left or right lane within 30 meters(longtitudinal), the car could excute lane change safely. Otherwise, the car should decrease its speed.
+3. The third part of code generates the trajectories for ego-car. Firstly, the code would use previous two waypoints and three waypoints ahead the ego-car(30 m, 60 m, 90 m) to initialize the trajectories points and fit them with spline. Then the code takes the previous two points and spline, divides the spline acccording to speed and feeds the points to the car. 
