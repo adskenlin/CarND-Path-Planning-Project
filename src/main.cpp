@@ -49,9 +49,9 @@ int main() {
     map_waypoints_dx.push_back(d_x);
     map_waypoints_dy.push_back(d_y);
   }
-  int self_lane = 1;
-  double ref_vel = 0.0;
-  h.onMessage([&ref_vel,&self_lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+  int ego_lane = 1;
+  double ref_vel = 0.0; //mph
+  h.onMessage([&ref_vel,&ego_lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
@@ -100,11 +100,15 @@ int main() {
           
           int prev_size = previous_path_x.size();
 
+          if(prev_size > 0){
+            car_s = end_path_s;
+          }
+
           
-          bool too_close = false;
-          bool keep_lane = false;
-          bool left_turn = false;
-          bool right_turn = false;
+          bool omv_ahead= false;
+          bool omv_left = false;
+          bool omv_right = false;
+          
           
           
           for (int i=0;i<sensor_fusion.size();i++)
@@ -125,50 +129,52 @@ int main() {
             {
               continue;
             }
-            double vx = sensor_fusion[i][3];
-            double vy = sensor_fusion[i][4];
-            double check_speed = sqrt(vx*vx+vy*vy);
-            double check_car_s = sensor_fusion[i][5];
+            double omv_vx = sensor_fusion[i][3];
+            double omv_vy = sensor_fusion[i][4];
+            double omv_speed = sqrt(omv_vx*omv_vx+omv_vy*omv_vy);
+            double omv_s = sensor_fusion[i][5];
               
-            check_car_s += ((double)prev_size*0.02*check_speed);
+            omv_s += ((double)prev_size*0.02*omv_speed);
                             
-            if (omv_lane==self_lane)
+            if (omv_lane==ego_lane)
             {
-              if((check_car_s > car_s) && ((check_car_s-car_s)<50)){
-                too_close = true;
+              if((omv_s > car_s) && ((omv_s-car_s)<30)){
+                omv_ahead = true;
               }
-            }else if (omv_lane - self_lane == -1){
-              if(fabs(check_car_s-car_s)>30){
-                left_turn = true;
+            }else if (omv_lane - ego_lane == -1){
+              if(fabs(omv_s-car_s)<30){
+                omv_left = true;
               }
-            }else if (omv_lane - self_lane == 1){
-              if(fabs(check_car_s-car_s)>30){
-                right_turn = true;
+            }else if (omv_lane - ego_lane == 1){
+              if(fabs(omv_s-car_s)<30){
+                omv_right = true;
               }
             }
           }
           
           double delta_speed =0;
+          const double MAX_SPEED = 49.5;
+          const double MAX_ACC = .224;
           
-          if(too_close)
+          if(omv_ahead)
           {
-            if(left_turn==true && self_lane>0)
+            if(!omv_left && ego_lane>0)
             {
-              self_lane--;
-            }else if(right_turn==true && self_lane != 2)
+              ego_lane--;
+            }else if(!omv_right && ego_lane != 2)
             {
-              self_lane++;
+              ego_lane++;
             }else{
               delta_speed-=0.224 ;
             }
           }else{
-            if (self_lane!=1){
-              if((self_lane==0 && right_turn==true)||(self_lane==2 && left_turn==true)){
-                self_lane =2;
+            if (ego_lane!=1){
+              if((ego_lane==0 && !omv_right)||(ego_lane==2 && !omv_left)){
+                ego_lane =1;
               }
             }
-            if (ref_vel < 49.5){
-              delta_speed += 0.224;
+            if (ref_vel < MAX_SPEED){
+              delta_speed += MAX_ACC;
             }
           }
 
@@ -205,9 +211,9 @@ int main() {
             ptsy.push_back(ref_y);
           }
           
-          vector<double> next_wp0 = getXY(car_s+30, (2+4*self_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp1 = getXY(car_s+60, (2+4*self_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp2 = getXY(car_s+90, (2+4*self_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> next_wp0 = getXY(car_s+30, (2+4*ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> next_wp1 = getXY(car_s+60, (2+4*ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> next_wp2 = getXY(car_s+90, (2+4*ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
           
           ptsx.push_back(next_wp0[0]);
           ptsx.push_back(next_wp1[0]);
@@ -243,13 +249,13 @@ int main() {
           for (int i=1; i<50-prev_size;i++)
           {
             ref_vel += delta_speed;
-            if (ref_vel > 49.5){
-              ref_vel = 49.5;
-            } else if(ref_vel < 0.224){
-              ref_vel = 0.224;
+            if (ref_vel > MAX_SPEED){
+              ref_vel = MAX_SPEED;
+            } else if(ref_vel < MAX_ACC){
+              ref_vel = MAX_ACC;
             } 
 
-            double N = (target_dist/(0.02*ref_vel/2.24));
+            double N = target_dist/(0.02*ref_vel/2.24);
             double x_point = x_add_on + (target_x)/N;
             double y_point = s(x_point);
             x_add_on = x_point;
@@ -257,8 +263,8 @@ int main() {
             double x_ref = x_point;
             double y_ref = y_point;
             
-            x_point = (x_ref*cos(ref_yaw)-y_ref*sin(ref_yaw));
-            y_point = (x_ref*sin(ref_yaw)+y_ref*cos(ref_yaw));
+            x_point = x_ref*cos(ref_yaw)-y_ref*sin(ref_yaw);
+            y_point = x_ref*sin(ref_yaw)+y_ref*cos(ref_yaw);
             
             x_point +=ref_x;
             y_point +=ref_y;
